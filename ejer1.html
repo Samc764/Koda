@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pentagrama - Aprende a leer (Clave de Sol)</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --accent:#0b63d6;
+      --accent-2:#1e90ff;
+      --muted:#e8f1ff;
+      --text:#08306b;
+    }
+    *{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial}
+    body{margin:0;background:var(--bg);color:var(--text);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+    .card{width:900px;max-width:96vw;background:linear-gradient(180deg, #ffffff 0%, var(--muted) 100%);border-radius:12px;padding:20px;box-shadow:0 8px 30px rgba(11,99,214,0.12)}
+    header{display:flex;align-items:center;gap:16px}
+    header h1{margin:0;font-size:18px;color:var(--accent)}
+    p.lead{margin:12px 0 18px;color:var(--text);line-height:1.4}
+    .staff-wrap{display:flex;gap:18px;align-items:flex-start}
+    .canvas-area{background:#fff;border-radius:8px;padding:14px;border:2px solid rgba(11,99,214,0.06)}
+    svg{display:block}
+    .controls{flex:1;min-width:260px}
+    .question{font-weight:600;color:var(--accent);margin-bottom:8px}
+    .options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    button.opt{background:#fff;border:2px solid var(--accent);padding:10px;border-radius:8px;font-weight:700;color:var(--accent);cursor:pointer}
+    button.opt.wrong{background:#ffebee;border-color:#ff6b6b;color:#8b1b1b}
+    button.opt.right{background:#e6f8ee;border-color:#1fa84a;color:#0b662f}
+    .meta{margin-top:12px;color:#19407a}
+    .actions{display:flex;gap:8px;margin-top:12px}
+    .btn{background:var(--accent);color:white;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+    .btn.secondary{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+    .intro{background:linear-gradient(180deg, rgba(11,99,214,0.04), rgba(11,99,214,0.02));padding:10px;border-radius:8px;border:1px solid rgba(11,99,214,0.06)}
+    #timer{font-weight:bold;color:var(--accent-2);margin-top:8px}
+    #summary{display:none;text-align:center;padding:20px}
+    #summary h2{color:var(--accent)}
+  </style>
+</head>
+<body>
+  <div class="card" id="introCard">
+    <header>
+      <h1>Introducción: Clave de Sol</h1>
+    </header>
+    <p class="lead">En el pentagrama, las <b>líneas</b> representan E, G, B, D, F (de abajo hacia arriba), y los <b>espacios</b> F, A, C, E. Observa las posiciones antes de iniciar.</p>
+    <div class="intro">Cuando estés listo, presiona el botón para comenzar los ejercicios. Tendrás un límite de tiempo para responder la mayor cantidad posible.</div>
+    <div style="margin-top:20px;text-align:center"><button class="btn" id="startBtn">Comenzar práctica</button></div>
+  </div>
+
+  <div class="card" id="practiceCard" style="display:none">
+    <div class="staff-wrap">
+      <div class="canvas-area">
+        <svg id="staff" width="620" height="220" viewBox="0 0 620 220" xmlns="http://www.w3.org/2000/svg">
+          <g id="lines" stroke="#08306b" stroke-width="2"></g>
+          <text id="clef" x="42" y="110" font-size="64" font-family="Bravura, serif">𝄞</text>
+          <g id="noteLayer"></g>
+          <g id="ledger"></g>
+        </svg>
+        <div id="timer">Tiempo restante: <span id="timeLeft">60</span>s</div>
+      </div>
+      <div class="controls">
+        <div class="question">¿Qué nota es ésta?</div>
+        <div class="options" id="options"></div>
+        <div class="meta">Correctas: <span id="correct">0</span> · Incorrectas: <span id="wrong">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="summary">
+    <h2>¡Tiempo terminado!</h2>
+    <p>Intentos totales: <span id="totalTries"></span></p>
+    <p>Respuestas correctas: <span id="totalCorrect"></span></p>
+    <p>Respuestas incorrectas: <span id="totalWrong"></span></p>
+    <div style="margin-top:20px"><button class="btn" id="goHome">Volver a principal</button></div>
+  </div>
+
+  <script>
+    const NOTES = ['C4','D4','E4','F4','G4','A4','B4','C5','D5','E5','F5','G5','A5'];
+    const svg = document.getElementById('staff');
+    const linesGroup = document.getElementById('lines');
+    const noteLayer = document.getElementById('noteLayer');
+    const ledgerGroup = document.getElementById('ledger');
+    const optionsWrap = document.getElementById('options');
+
+    const timeEl = document.getElementById('timeLeft');
+    const correctEl = document.getElementById('correct');
+    const wrongEl = document.getElementById('wrong');
+    const totalTriesEl = document.getElementById('totalTries');
+    const totalCorrectEl = document.getElementById('totalCorrect');
+    const totalWrongEl = document.getElementById('totalWrong');
+
+    let correct = 0, wrong = 0, timer=60, interval=null;
+    const leftMargin=80,bottomLineY=140,lineSpacing=16,step=lineSpacing/2,noteX=300;
+
+    for(let i=0;i<5;i++){
+      const y=bottomLineY - i*lineSpacing;
+      const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',80);
+      line.setAttribute('x2',580);
+      line.setAttribute('y1',y);
+      line.setAttribute('y2',y);
+      linesGroup.appendChild(line);
+    }
+
+    function noteToIndex(note){return NOTES.indexOf(note);}
+    function indexToY(i){const eIndex=NOTES.indexOf('E4');return bottomLineY-(i-eIndex)*step;}
+    function clearNote(){noteLayer.innerHTML='';ledgerGroup.innerHTML='';}
+
+    function drawNote(note){
+      clearNote();
+      const idx=noteToIndex(note);
+      const y=indexToY(idx);
+      const el=document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+      el.setAttribute('cx',noteX);el.setAttribute('cy',y);
+      el.setAttribute('rx',10);el.setAttribute('ry',7);
+      el.setAttribute('transform',`rotate(-20 ${noteX} ${y})`);
+      el.setAttribute('fill','#08306b');
+      noteLayer.appendChild(el);
+      const midIndex=NOTES.indexOf('B4');
+      const stem=document.createElementNS('http://www.w3.org/2000/svg','line');
+      if(idx<=midIndex){stem.setAttribute('x1',noteX+6);stem.setAttribute('x2',noteX+6);stem.setAttribute('y1',y-6);stem.setAttribute('y2',y-48);} else {stem.setAttribute('x1',noteX-6);stem.setAttribute('x2',noteX-6);stem.setAttribute('y1',y+6);stem.setAttribute('y2',y+48);}
+      stem.setAttribute('stroke','#08306b');stem.setAttribute('stroke-width',2);noteLayer.appendChild(stem);
+    }
+
+    let currentNote=null;
+    function randomNote(){return NOTES[Math.floor(Math.random()*NOTES.length)];}
+    function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+    function buildOptions(correctNote){
+      const opts=new Set([correctNote]);
+      while(opts.size<4)opts.add(NOTES[Math.floor(Math.random()*NOTES.length)]);
+      const arr=shuffle([...opts]);optionsWrap.innerHTML='';
+      arr.forEach(v=>{
+        const b=document.createElement('button');
+        b.className='opt';b.textContent=v;
+        b.onclick=()=>selectAns(b,v);
+        optionsWrap.appendChild(b);
+      });
+    }
+
+    function selectAns(btn,val){
+      Array.from(optionsWrap.children).forEach(x=>x.disabled=true);
+      if(val===currentNote){btn.classList.add('right');correct++;correctEl.textContent=correct;}else{btn.classList.add('wrong');wrong++;wrongEl.textContent=wrong;}
+      setTimeout(()=>nextQ(),500);
+    }
+
+    function nextQ(){currentNote=randomNote();drawNote(currentNote);buildOptions(currentNote);}
+
+    function startGame(){
+      document.getElementById('introCard').style.display='none';
+      document.getElementById('practiceCard').style.display='block';
+      nextQ();
+      interval=setInterval(()=>{
+        timer--;timeEl.textContent=timer;
+        if(timer<=0){clearInterval(interval);endGame();}
+      },1000);
+    }
+
+    function endGame(){
+      document.getElementById('practiceCard').style.display='none';
+      const total=correct+wrong;
+      totalTriesEl.textContent=total;
+      totalCorrectEl.textContent=correct;
+      totalWrongEl.textContent=wrong;
+      document.getElementById('summary').style.display='block';
+    }
+
+    document.getElementById('startBtn').onclick=startGame;
+    document.getElementById('goHome').onclick=()=>{window.location.href='principal.html';};
+  </script>
+</body>
+</html>
